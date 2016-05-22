@@ -1,0 +1,186 @@
+package Othello;
+
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Random;
+
+/**
+ * This class contains a gameboard and the rules for the game.
+ * Two players will put out pieces on a board and trying to smart each other
+ * @author Andreas
+ */
+public class Game extends JFrame implements ActionListener
+{
+	//The Frame
+	private String title = "Othello";
+	private Dimension demi = new Dimension(1500,1500);
+	
+	//The writing panel
+	private JPanel write_Panel = new JPanel(); 
+	private JPanel text_Panel = new JPanel();
+	public JTextArea text_Area = new JTextArea();
+	private JTextField write = new JTextField(30);
+	private JButton move = new JButton("Place");
+	
+	//Creates the board that will be played on
+	private GameBoard the_Board;
+	//The Sting that carries the piece placement for player one
+	private String command = null;
+	private String bot_Command = null;
+	//Creates the human player and the bot
+	private Player p1 = new Player("Andreas", "white");
+	private Player bot = new Player("Computer", "black");
+	
+	//Checks which players turn it is
+	private boolean white_Turn = true;
+	// If gameover is true the game ends
+	private boolean game_Over = false;
+	
+	//The game rules
+    private Rules rules;
+    //Simulation for the AI bot
+    private Simulation simu;
+
+	/**
+	 * Creates the game which contains a game board, and a writing panel for the human player
+	 */
+	public Game()
+	{
+		//Frame settings
+		setTitle(title);
+		setSize(demi);
+		setResizable(false);
+		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		setLayout(null);
+		
+		//Write panels settings
+		write_Panel.setSize(400,400);
+		write_Panel.setBackground(Color.RED);
+		write_Panel.setLocation(1050, 50 );
+		write_Panel.add(write);
+		move.addActionListener(this);
+		write_Panel.add(move);
+		
+		//Show panlen
+		text_Panel.setSize(400,400);
+		text_Panel.setBackground(Color.CYAN);
+		text_Panel.setLocation(1050, 450 );
+		text_Panel.add(text_Area);
+		
+		//The gameboard
+		the_Board = new GameBoard();
+		add(the_Board);
+		add(write_Panel);
+		add(text_Panel);
+		setVisible(true);
+		setResizable(true);
+		
+		rules = new Rules(this);
+		simu = new Simulation(rules);
+	}
+	/**
+	 * The main method, creates a new game
+	 * @param args
+	 */
+	public static void main (String[] args)
+	{
+		Game game = new Game();
+	}
+// ----------------------------------------------- WHITE AND BLACK PIECE PLACING -------------------------------------------------------	
+	/**
+	 * This function make it able for the white player to place a piece.
+	 * Takes the text from the JTextfield when "Place" button is pressed and move a white piece to that location of the text
+	 */
+	public void actionPerformed(ActionEvent ae)
+	{
+		//Will only read the input when it's whites turn
+		if(white_Turn && !game_Over)
+		{
+			command = write.getText();
+			for(int r = 0; r < 4; r++)
+			{
+				for(int c = 0; c < 4; c++)
+				{
+					//Checks if the coordinate exists and find it's column and row at the same time
+					if(command.equals(the_Board.checkSpelling(r,c)))
+					{
+						//Place the piece on the block if it's empty
+						if(!the_Board.checkPosition(r,c))
+						{
+							// This piece is now active on the board and can't be picked again
+							rules.placePieceBoard(the_Board,p1, r, c);
+							//Check if the placing of the piece cause game pieces to flip color
+							rules.flipRule(the_Board, p1, bot, r, c);
+							//Now it's black turn to play
+							white_Turn = false;
+							blackTurn();
+						}
+						System.out.println("Position " + command + " Is occupied");
+						return;
+					}
+					
+				}
+			}
+			System.out.println("Spelled wrong");
+			return;
+		}
+	}
+	/**
+	 * This function make it able for the black player to place a piece.
+	 * The black player place it's piece after a simulation with alphabeta pruning algorithm 
+	 */
+	public void blackTurn()
+	{
+		bot_Command = simu.alphabeta(p1,bot);
+		// Loops through the field in order to find the block with the choosen
+		// coordinate
+		for (int r = 0; r < 4; r++)
+		{
+			for (int c = 0; c < 4; c++)
+			{
+				// Checks if the coordinate exists and find it at the same time
+				if (bot_Command.equals(the_Board.checkSpelling(r, c)))
+				{
+					System.out.println("Command is: " + bot_Command);
+					// Place the piece on the block if it's empty
+					if (!the_Board.checkPosition(r, c))
+					{
+						rules.placePieceBoard(the_Board, bot, r, c);
+						rules.flipRule(the_Board, bot, p1, r, c);
+
+						white_Turn = true;
+						game_Over = rules.gameOver(p1, bot);
+						return;
+					}
+				}
+			}
+
+		}
+		// If alphabeta fails this will be printed
+		System.out.println("alphabeta produced a occupied coordinate");
+	}
+	/**
+	 * Prints out the board in the console in purpose of easier debugging
+	 * @param board
+	 */
+	public void consolePrint(GameBoard board)
+	{
+		for(int r = 0; r < board.simpleField.length; r++)
+		{
+			for(int c = 0; c < board.simpleField[0].length; c++)
+			{
+				System.out.print(":" + board.simpleField[r][c] + ":");
+			}
+			System.out.println();
+		}
+		System.out.println();
+	}
+
+}

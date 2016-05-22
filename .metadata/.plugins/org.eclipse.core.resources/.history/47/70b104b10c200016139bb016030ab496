@@ -1,0 +1,604 @@
+package Othello;
+
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Random;
+
+/**
+ * This class contains a gameboard and the rules for the game.
+ * Two players will put out pieces on a board and trying to smart each other
+ * @author Andreas
+ */
+public class Game extends JFrame implements ActionListener
+{
+	//The Frame
+	private String title = "Othello";
+	private Dimension demi = new Dimension(1500,1500);
+	
+	//The writing panel
+	private JPanel write_Panel = new JPanel(); 
+	private JPanel text_Panel = new JPanel();
+	private JTextArea text_Area = new JTextArea();
+	private JTextField write = new JTextField(30);
+	private JButton move = new JButton("Place");
+	
+	//Creates the board that will be played on
+	private GameBoard the_Board;
+	//The Sting that carries the piece placement for player one
+	private String command = null;
+	private String bot_Command = null;
+	//Creates the human player and the bot
+	private Player p1 = new Player("Andreas", "white");
+	private Player bot = new Player("Computer", "black");
+	
+	//Checks which players turn it is
+	private boolean white_Turn = true;
+	// If gameover is true the game ends
+	private boolean game_Over = false;
+	//The searching courses for the fliping pieces rules
+	private String courses[] = {"north","northeast","east","southeast","south","southwest","west","northwest"};
+
+	//ALPHA BETA VARIABLE
+	int MAX_DEPTH = 6;
+	//Milliseconds
+	int MAX_TIME = 5 * 1000;
+	long current_Time = 0;
+    int MAX_U = 16;
+    int MIN_U = -16;
+    int nodeCounter = 0;
+	
+	//Bot_choice
+	private UtilityNode botnode = new UtilityNode(-16,"");
+	/**
+	 * Creates the game which contains a game board, and a writing panel for the human player
+	 */
+	public Game()
+	{
+		//Frame settings
+		setTitle(title);
+		setSize(demi);
+		setResizable(false);
+		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		setLayout(null);
+		
+		//Write panels settings
+		write_Panel.setSize(400,400);
+		write_Panel.setBackground(Color.RED);
+		write_Panel.setLocation(1050, 50 );
+		write_Panel.add(write);
+		move.addActionListener(this);
+		write_Panel.add(move);
+		
+		//Show panlen
+		text_Panel.setSize(400,400);
+		text_Panel.setBackground(Color.CYAN);
+		text_Panel.setLocation(1050, 450 );
+		text_Panel.add(text_Area);
+		
+		//The gameboard
+		the_Board = new GameBoard();
+		add(the_Board);
+		add(write_Panel);
+		add(text_Panel);
+		setVisible(true);
+		setResizable(true);
+	}
+	/**
+	 * The main method, creates a new game
+	 * @param args
+	 */
+	public static void main (String[] args)
+	{
+		Game game = new Game();
+	}
+// ----------------------------------------------- WHITE AND BLACK PIECE PLACING -------------------------------------------------------	
+	/**
+	 * This function make it able for the white player to place a piece.
+	 * Takes the text from the JTextfield when "Place" button is pressed and move a white piece to that location of the text
+	 */
+	public void actionPerformed(ActionEvent ae)
+	{
+		//Will only read the input when it's whites turn
+		if(white_Turn && !game_Over)
+		{
+			command = write.getText();
+			for(int r = 0; r < 4; r++)
+			{
+				for(int c = 0; c < 4; c++)
+				{
+					//Checks if the coordinate exists and find it's column and row at the same time
+					if(command.equals(the_Board.checkSpelling(r,c)))
+					{
+						//Place the piece on the block if it's empty
+						if(!the_Board.checkPosition(r,c))
+						{
+							// This piece is now active on the board and can't be picked again
+							placePieceBoard(the_Board,p1, r, c);
+							//Check if the placing of the piece cause game pieces to flip color
+							for(int a = 0; a < courses.length; a++)
+								flipRule(the_Board, p1, bot, r, c, courses[a]);
+							//Now it's black turn to play
+							white_Turn = false;
+							blackTurn();
+						}
+						System.out.println("Position " + command + " Is occupied");
+						return;
+					}
+					
+				}
+			}
+			System.out.println("Spelled wrong");
+			return;
+		}
+	}
+	/**
+	 * This function make it able for the black player to place a piece.
+	 * The black player place it's piece after a simulation with alphabeta pruning algorithm 
+	 */
+	public void blackTurn()
+	{
+		bot_Command = alphabeta();
+		// Loops through the field in order to find the block with the choosen
+		// coordinate
+		for (int r = 0; r < 4; r++)
+		{
+			for (int c = 0; c < 4; c++)
+			{
+				// Checks if the coordinate exists and find it at the same time
+				if (bot_Command.equals(the_Board.checkSpelling(r, c)))
+				{
+					System.out.println("Command is: " + bot_Command);
+					// Place the piece on the block if it's empty
+					if (!the_Board.checkPosition(r, c))
+					{
+						placePieceBoard(the_Board, bot, r, c);
+						for (int b = 0; b < courses.length; b++)
+							flipRule(the_Board, bot, p1, r, c, courses[b]);
+
+						white_Turn = true;
+						gameOver();
+						return;
+					}
+				}
+			}
+
+		}
+		// If alphabeta fails this will be printed
+		System.out.println("alphabeta produced a occupied coordinate");
+	}
+//------------------------------------------------ RULES ------------------------------------------------------------
+	/**
+	 * When the board is full it's game over
+	 */
+	public void gameOver()
+	{
+		//The board is full
+		if(p1.getPieceCount()+bot.getPieceCount() == 16)
+		{
+			System.out.println("Game over");
+			if(p1.getPieceCount() == 8)
+				System.out.println("It's a draw");
+			else if(p1.getPieceCount() > bot.getPieceCount())
+				System.out.println("White player wins with: " + p1.getPieceCount() + " Pieces");
+			else
+				System.out.println("Black player wins with: " + bot.getPieceCount() + " Pieces");
+			game_Over = true;
+		}
+	}
+	/**
+	 * This function checks if pieces shall be flipped
+	 * @param board: The board which contains the pieces
+	 * @param current: The player who placed the current piece
+	 * @param opponent: The opponent player and his color
+	 * @param i: The column position of the current placed piece
+	 * @param j: The row position of the current placed piece
+	 * @param course: Which direction the rules will look for flipping
+	 */
+	public void flipRule(GameBoard board ,Player current, Player opponent, int r, int c, String course)
+	{
+		//Columm is A,B,C,D, row is 1,2,3,4
+		//List that will contain pieces thath shall be flipped
+		ArrayList<Piece> convert = new ArrayList<>();
+		//A end piece of the same color as the placed piece is needed if the pieces between shall be flipped
+		Piece end = null;
+		String opposite_c = opponent.getColor();
+		String current_c = current.getColor();
+		
+		int col = 0, row = 0;
+		int a = 0, b = 0;
+		
+		// Determines which way on the board the flipsearch shall look
+		switch(course)
+		{
+		case "north": col = -1; row = 0;break;
+		case "northeast": col = -1; row = 1;break;
+		case "east": col = 0; row = 1;break;
+		case "southeast": col = 1; row = 1;break;
+		case "south": col = 1; row = 0;break;
+		case "southwest": col = 1; row = -1;break;
+		case "west": col = 0; row = -1;break;
+		case "northwest": col = -1; row = -1;break;
+		}
+		//if m is 0, then don't search column direction, if n is 0, then don't search column direction
+		int m = 0, n = 0;
+		// if m is negative, then look north
+		if(col < 0)
+			m = -1;
+		// if m is positive look south
+		else if(col > 0)
+			m = 1;
+		// if n is negative, then look west
+		if(row < 0)
+			n = -1;
+		// if n is positive look east
+		else if(row > 0)
+			n = 1;
+		// a and b is the current position of the current placed piece in column and row + which direction it shall look at
+		a = r + m;
+		b = c + n;
+		//Search the field for flipping opportunities 
+		while(a <= board.field.length - 1 && a >= 0 && b <= board.field[0].length - 1 && b >= 0 )
+		{
+			//If there is an empty block, cancel the search
+			if(board.field[a][b].checkOccupied() == false || end != null )
+				break;
+			//if the piece is the opponents color, add it to the the convert list
+			else if(board.field[a][b].getPieceColor().equals(opposite_c) && end == null)
+				convert.add(board.getPieceFromBlock(a, b));
+			//only flip the pieces in the convert list, if the piece start with "black/white" and end with the same color
+			else if(board.field[a][b].getPieceColor().equals(current_c))
+				end = board.getPieceFromBlock(a, b);
+			a += m;
+			b += n;
+		}
+		// if there isn't a start and end piece of the same color, then don't flip pieces
+		if(end != null)
+		{
+			flipPiece(convert, board, current, opponent);		
+		}
+	}
+	/**
+	 * Flips a piece which means replace it with the other players piece
+	 * @param flip_List: The list which contains pieces that shall be flipped
+	 * @param board: The gameboard 
+	 * @param current: The player who placed the current piece
+	 * @param opponent: The opponent
+	 */
+	public void flipPiece(ArrayList<Piece> flip_List, GameBoard board, Player current, Player opponent)
+	{
+		int r = 0, c = 0;
+		//Loops through the list
+		for (int i = 0; i < flip_List.size(); i++)
+		{
+			//Column and row
+			c = flip_List.get(i).getColom();
+			r = flip_List.get(i).getRow();
+			
+			//Remove the flipped pieces from the board and set them to not in use
+			opponent.pieceInUse(false, flip_List.get(i).getIndex());
+			flip_List.get(i).setCord(null);
+			flip_List.get(i).setXY(0, 0);
+			flip_List.get(i).setColom(0);
+			flip_List.get(i).setRow(0);
+			//Place a piece where the flipped piece was
+			System.out.println("Flip");
+			placePieceBoard(board, current, r, c);
+			
+		}
+	}
+	/**
+	 * Puts a piece on the gameboard
+	 * Takes a piece that is not in use and sets it on a block on the gameboard
+	 * @param board: The gameboard
+	 * @param player: The player who placed the piece
+	 * @param i: Column
+	 * @param j: Row
+	 */
+	public void placePieceBoard(GameBoard board,Player player, int r, int c)
+	{
+		//Take a piece that is not in use
+		Piece p = player.take_piece();
+		//Gets the number of the choosen piece
+		int ind = p.getIndex();
+		board.setPieceOnBlock(p, r, c);
+		//System.out.println(p.getColor() + p.getIndex() + " Is occ" );
+		player.getPiece(ind).setCord(board.field[r][c].getCord());
+		player.getPiece(ind).setXY(board.getBlockX(r,c), board.getBlockY(r,c));
+		player.getPiece(ind).setColom(c); 
+		player.getPiece(ind).setRow(r);
+		//Prints out the board in the console
+		//System.out.println(p.getCord() + " R: " + r + " C: " + c);
+		System.out.println("Place" );
+		consolePrint(board);
+	}
+	/**
+	 * Prints out the board in the console in purpose of easier debugging
+	 * @param board
+	 */
+	public void consolePrint(GameBoard board)
+	{
+		for(int r = 0; r < board.simpleField.length; r++)
+		{
+			for(int c = 0; c < board.simpleField[0].length; c++)
+			{
+				System.out.print(":" + board.simpleField[r][c] + ":");
+			}
+			System.out.println();
+		}
+		System.out.println();
+	}
+//---------------------------------------------- Alphabeta + Functions for a simulation board -------------------------------------	
+	/**
+	 * Reset a player pieces to the state of another a chosen player
+	 * @param pl: The chosen player which state shall be copied
+	 * @return: Returns the copied state to the player
+	 */
+    public Player resetPlayer(Player pl)
+    {
+		Player copy = new Player(null, pl.getColor());
+		//Transfers copies of pl pieces to the copy
+		copy.clone(pl);
+			
+    	return copy;
+    }
+    /**
+     * Resets the board and places out the pieces of two chosen players
+     * @param pl1: Player one and his pieces
+     * @param pl2: Player two and his pieces
+     * @return: Returns the new GameBoard
+     */
+    public GameBoard resetBoard(Player pl1, Player pl2)
+    {
+    	GameBoard gb = new GameBoard();
+    	for (int i = 0; i < 16; i++)
+		{
+    		//Places out the pieces on the board, by checking the pieces coordinates
+    		//If index is -1, then the piece is not on the board	
+			if(pl1.getPiece(i).getIndex() != -1)
+			{
+				gb.setPieceOnBlock(pl1.getPiece(i), pl1.getPiece(i).getRow() ,pl1.getPiece(i).getColom());
+				//System.out.println(pl1.getColor() + " Number " + i + pl1.getPiece(i).getCord() + " Row: " + pl1.getPiece(i).getRow() + " C: " + pl1.getPiece(i).getColom() );
+			}
+			if(pl2.getPiece(i).getIndex() != -1)
+			{
+				gb.setPieceOnBlock(pl2.getPiece(i),pl2.getPiece(i).getRow() , pl2.getPiece(i).getColom());
+				//System.out.println(pl2.getColor() + " Number " + i + pl2.getPiece(i).getCord()  + " Row: " + pl2.getPiece(i).getRow() + " C: " + pl2.getPiece(i).getColom());
+			}
+			
+			
+		}
+		//System.out.println(pl1.getColor() + pl1.getPieceCount());
+		//System.out.println(pl2.getColor() + pl2.getPieceCount());
+    	return gb;
+    }
+    /**
+     * The alphabeta pruning algorithm
+     * @return: The command that is the smartest for the black player to place his piece
+     */
+	public String alphabeta()
+	{
+		//Creates simulation board and players
+		GameBoard state = new GameBoard();
+		Player white = new Player(null, p1.getColor());
+		Player black = new Player(null, bot.getColor());
+        
+		// Transfer the current state of the game to the simulation actors
+		white = resetPlayer(p1);
+		black = resetPlayer(bot);
+		state = resetBoard(white, black);
+		
+		// beta, alpha, depth variable
+		int b = MAX_U;
+		int a = MIN_U;
+		int column = 0;
+		int row = 0;
+		int depth = 0;
+		current_Time = System.currentTimeMillis();
+		
+		//Just a temp node
+		UtilityNode vn = new UtilityNode(0,"");
+		//Reset botnode
+		botnode.setValue(-16);
+		botnode.setCord("");
+		
+		
+		vn = Max(white, black, state, a, b, row, column, depth);
+		
+		System.out.println("NodeCounter: " + nodeCounter + " Best utility: " + vn.getValue() + " , " + vn.getCord() );
+		long time_Check = System.currentTimeMillis();
+		if( (time_Check - current_Time) > MAX_TIME)
+			System.out.println(MAX_TIME/1000 + " Seconds have passed, search ended");
+		else
+			System.out.println((double) (time_Check-current_Time )/1000 + " Seconds");
+
+		//Resets nodecounter
+		nodeCounter = 0;	
+		//return vn.getCord();
+		return botnode.getCord();
+		
+	}
+	/**
+	 * Sets all available choices on the board in a text array
+	 * @param board: The board with empty and occupied places
+	 * @return: An ArrayList with string coordinates for all empty spaces on the board
+	 */
+	public ArrayList<String> availableMoves(GameBoard board)
+	{
+		ArrayList<String> moves = new ArrayList<String>();
+		for(int r = 0; r < board.field.length; r++)
+		{
+			for(int c = 0; c < board.field[0].length; c++)
+			{
+				if(!board.checkPosition(r, c))
+				{
+					//System.out.println(" IS empty " + board.field[r][c].getCord() );
+					moves.add(board.field[r][c].getCord());
+				}
+			}
+		}	
+	    return moves;
+	}
+	/**
+	 * The Max algorithm that decides the best choice for the black player, by picking the highest ultillity
+	 * @param white: The current state of the white player
+	 * @param black: The current state of the black player
+	 * @param state: The current state of the board
+	 * @param a: Alpha
+	 * @param b: Beta
+	 * @param c: the current column
+	 * @param r: the current row
+	 * @param depth: Describes how many levels down in the tree the search has gone
+	 * @return: Return the best choice for the black player
+	 */
+	public UtilityNode Max(Player white, Player black, GameBoard state, int a, int b, int r, int c, int depth)
+	{
+		UtilityNode vn = new UtilityNode(0,"");
+		vn.setValue(MIN_U);
+		// Saves the current states of the entire board in these variables to later go back to them
+		Player old_White = resetPlayer(white);
+		Player old_Black = resetPlayer(black);
+		GameBoard old_State = resetBoard(old_White, old_Black);
+		
+		depth++;
+		// If the board is full or if the maximum depth is reached
+		if (black.getPieceCount() + white.getPieceCount() >= 16 || depth > MAX_DEPTH)
+		{
+			//Returns utility that is blackpieces - whitepieces.
+			vn.setValue( black.getPieceCount() - white.getPieceCount() );
+			//Also sets the Coordinate that generates this utility
+			vn.setCord(state.field[r][c].getCord());
+			//System.out.println("Min return Utility: " + vn.getValue() + " With cord:" + vn.getCord());
+			return vn;
+		}
+		nodeCounter++;
+		ArrayList<String> moves = availableMoves(state);
+		//loops through all available moves
+		for(int q = 0; q < moves.size(); q++)
+		{
+			// if the time limit have passed then return the current best choice found
+			long time_Check = System.currentTimeMillis();
+			if((time_Check - current_Time) > MAX_TIME)
+				return vn;
+			
+			// Convert the text coordinate to row and column coordinates 
+			c = state.cordToColumn( moves.get(q) ); r = state.cordToRow( moves.get(q));
+			System.out.println("Max: " + depth + " Place piece at: " + state.field[r][c].getCord()+" alpha is: " + a);
+			//Placing the piece and checking for flips
+			placePieceBoard(state, black, r, c);
+			for (int k = 0; k < courses.length; k++)
+				flipRule(state, black, white, r, c, courses[k]);
+			
+			UtilityNode min = Min(white, black, state, a, b, r, c, depth);
+			vn.setValue( Math.max( vn.getValue(), min.getValue() ) );
+			// This doesn't need to be used now when botnode exist
+			
+			//If Math.max choosed min value, then change the UtilityNode to min
+//			if(vn.getValue() == min.getValue())
+//			{
+//				vn.setCord(min.getCord()); 
+//			    System.out.println("Found higher value Max: " + depth + " Cord: " + vn.getCord()+ " Utility: " + vn.getValue() );
+//			}
+//			else if(vn.getValue() == vn.getValue())
+//				vn.setCord(vn.getCord());
+			
+			//Prune if a higher value then the current b is
+			if (vn.getValue() >= b )
+			{
+				return vn;
+			}
+			//Sets alpha to the current best choice
+			a = Math.max(a, vn.getValue());
+			
+			//If it's the top node, the combare al the tops nodes value and store the highest one
+			if(depth == 1)
+			{
+				if(vn.getValue() > botnode.getValue())
+				{
+					botnode.setCord(state.field[r][c].getCord());
+					botnode.setValue(vn.getValue());
+					//text_Area.append(botnode.getCord() + botnode.getValue() + "\n");
+				}
+			}
+			//Resets the state in order to make the next available choice
+			white = resetPlayer(old_White);
+			black = resetPlayer(old_Black);
+			state = resetBoard(white, black);
+		}
+		System.out.println("Max Depth " + depth + " a:  " +a + " b: " + b + " Cord: " + vn.getCord()+ " Utility: " + vn.getValue() +" Ended!!!!!!!!!!!!!!!!!!!!" );
+		return vn;
+	}
+	/**
+	 * The Min algorithm that decides the best choice for the white player, by picking the lowest utility for the black player
+	 * @param white: The current state of the white player
+	 * @param black: The current state of the black player
+	 * @param state: The current state of the board
+	 * @param a: Alpha
+	 * @param b: Beta
+	 * @param b: Beta
+	 * @param c: the current column
+	 * @param depth: Describes how many levels down in the tree the search has gone
+	 * @return: Return the best choice for the white player
+	 */
+	public UtilityNode Min(Player white, Player black, GameBoard state, int a, int b, int r, int c, int depth)
+	{
+		consolePrint(state);
+		UtilityNode vn = new UtilityNode(0,"");
+		vn.setValue(MAX_U);
+		Player old_White = resetPlayer(white);
+		Player old_Black = resetPlayer(black);
+		GameBoard old_State = resetBoard(old_White, old_Black);
+
+		depth++;
+		if (black.getPieceCount() + white.getPieceCount() == 16 || depth > MAX_DEPTH)
+		{
+			vn.setValue( black.getPieceCount() - white.getPieceCount() );
+			vn.setCord(state.field[r][c].getCord());
+			//System.out.println("Max return Utility: " + vn.getValue() + " With cord:" + vn.getCord() );
+			return vn;
+		}
+		nodeCounter++;
+		ArrayList<String> moves = availableMoves(state);
+		for(int q = 0; q < moves.size(); q++)
+		{
+			long time_Check = System.currentTimeMillis();
+			if((time_Check - current_Time) > MAX_TIME)
+				return vn;
+			
+			c = state.cordToColumn( moves.get(q) ); r = state.cordToRow( moves.get(q));
+			System.out.println("Min: " + depth + " Place piece at: " + state.field[r][c].getCord() +" beta is: " + a );
+			
+			//Placing the piece and checking for flips
+			placePieceBoard(state, white, r, c);
+			for (int k = 0; k < courses.length; k++)
+				flipRule(state, white, black, r, c, courses[k]);
+			
+			UtilityNode max = Max(white, black, state, a, b, r, c, depth);
+			vn.setValue( Math.min( vn.getValue(), max.getValue() ) );
+//			if(vn.getValue() == max.getValue())
+//			{
+//				vn.setCord(max.getCord());
+//				System.out.println("Find lower value at Min: " + depth + " Cord: " + vn.getCord()+ " Utility: " + vn.getValue() );
+//			}
+//			else if(vn.getValue() == vn.getValue())
+//				vn.setCord(vn.getCord());
+	
+			if (vn.getValue() <= a )
+			{
+				return vn;
+			}
+			b = Math.min(b, vn.getValue());
+			white = resetPlayer(old_White);
+			black = resetPlayer(old_Black);
+			state = resetBoard(white, black);
+		}
+		System.out.println("Min Dephh " + depth  + " a:  " +a + " b: " + b + " Cord: " + vn.getCord()+ " Utility: " + vn.getValue() +  " Ended!!!!!!!!!!!!!!" );
+		return vn;
+	}
+}

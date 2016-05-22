@@ -1,0 +1,261 @@
+package Othello;
+
+import java.util.ArrayList;
+
+/**
+ * This class makes simulation of the game so the bot player can decide the best move.
+ * @author Stridde
+ *
+ */
+public class Simulation
+{
+	//ALPHA BETA VARIABLE
+	int MAX_DEPTH = 6;
+	//Milliseconds
+	int MAX_TIME = 5 * 1000;
+	long current_Time = 0;
+	int MAX_U = 16;
+	int MIN_U = -16;
+	int nodeCounter = 0;
+	
+	//Bot_choice
+	private UtilityNode botnode = new UtilityNode(-16,"");
+	
+	private Rules rules;
+	
+	public Simulation(Rules rules)
+	{
+		this.rules = rules;
+	}
+//---------------------------------------------- Alphabeta + Functions for a simulation board -------------------------------------	
+		/**
+		 * Reset a player pieces to the state of another a chosen player
+		 * @param pl: The chosen player which state shall be copied
+		 * @return: Returns the copied state to the player
+		 */
+	    public Player resetPlayer(Player pl)
+	    {
+			Player copy = new Player(null, pl.getColor());
+			//Transfers copies of pl pieces to the copy
+			copy.clone(pl);	
+	    	return copy;
+	    }
+	    /**
+	     * Resets the board and places out the pieces of two chosen players
+	     * @param pl1: Player one and his pieces
+	     * @param pl2: Player two and his pieces
+	     * @return: Returns the new GameBoard
+	     */
+	    public GameBoard resetBoard(Player pl1, Player pl2)
+	    {
+	    	GameBoard gb = new GameBoard();
+	    	for (int i = 0; i < 16; i++)
+			{
+	    		//Places out the pieces on the board, by checking the pieces coordinates
+	    		//If index is -1, then the piece is not on the board	
+				if(pl1.getPiece(i).getIndex() != -1)
+					gb.setPieceOnBlock(pl1.getPiece(i), pl1.getPiece(i).getRow() ,pl1.getPiece(i).getColom());
+				
+				if(pl2.getPiece(i).getIndex() != -1)
+					gb.setPieceOnBlock(pl2.getPiece(i),pl2.getPiece(i).getRow() , pl2.getPiece(i).getColom());
+			}
+	    	return gb;
+	    }
+	    /**
+	     * The alphabeta pruning algorithm
+	     * @return: The command that is the smartest for the black player to place his piece
+	     */
+		public String alphabeta(Player p1, Player bot)
+		{
+			//Creates simulation board and players
+			GameBoard state = new GameBoard();
+			Player white = new Player(null, p1.getColor());
+			Player black = new Player(null, bot.getColor());
+	        
+			// Transfer the current state of the game to the simulation actors
+			white = resetPlayer(p1);
+			black = resetPlayer(bot);
+			state = resetBoard(white, black);
+			
+			// beta, alpha, depth variable
+			int b = MAX_U;
+			int a = MIN_U;
+			int column = 0;
+			int row = 0;
+			int depth = 0;
+			current_Time = System.currentTimeMillis();
+			
+			//Just a temp node
+			UtilityNode vn = new UtilityNode(0,"");
+			//Reset botnode
+			botnode.setValue(-16);
+			botnode.setCord("");
+			
+			
+			vn = Max(white, black, state, a, b, row, column, depth);
+			
+			System.out.println("NodeCounter: " + nodeCounter + " Best utility: " + vn.getValue() + " , " + vn.getCord() );
+			long time_Check = System.currentTimeMillis();
+			if( (time_Check - current_Time) > MAX_TIME)
+				System.out.println(MAX_TIME/1000 + " Seconds have passed, search ended");
+			else
+				System.out.println((double) (time_Check-current_Time )/1000 + " Seconds");
+
+			//Resets nodecounter
+			nodeCounter = 0;	
+			//return vn.getCord();
+			return botnode.getCord();
+			
+		}
+		/**
+		 * Sets all able choices on the board in a text array
+		 * @param board: The board with empty and occupied places
+		 * @return: An ArrayList with string coordinates for all empty spaces on the board
+		 */
+		public ArrayList<String> ableMoves(GameBoard board)
+		{
+			ArrayList<String> moves = new ArrayList<String>();
+			for(int r = 0; r < board.field.length; r++)
+			{
+				for(int c = 0; c < board.field[0].length; c++)
+				{
+					if(!board.checkPosition(r, c))
+						moves.add(board.field[r][c].getCord());
+				}
+			}	
+		    return moves;
+		}
+		/**
+		 * The Max algorithm that decides the best choice for the black player, by picking the highest ultillity
+		 * @param white: The current state of the white player
+		 * @param black: The current state of the black player
+		 * @param state: The current state of the board
+		 * @param a: Alpha
+		 * @param b: Beta
+		 * @param c: the current column
+		 * @param r: the current row
+		 * @param depth: Describes how many levels down in the tree the search has gone
+		 * @return: Return the best choice for the black player
+		 */
+		public UtilityNode Max(Player white, Player black, GameBoard state, int a, int b, int r, int c, int depth)
+		{
+			UtilityNode vn = new UtilityNode(0,"");
+			vn.setValue(MIN_U);
+			// Saves the current states of the entire board in these variables to later go back to them
+			Player old_White = resetPlayer(white);
+			Player old_Black = resetPlayer(black);
+			GameBoard old_State = resetBoard(old_White, old_Black);
+			
+			depth++;
+			// If the board is full or if the maximum depth is reached
+			if (black.getPieceCount() + white.getPieceCount() >= 16 || depth > MAX_DEPTH)
+			{
+				//Returns utility that is blackpieces - whitepieces.
+				vn.setValue( black.getPieceCount() - white.getPieceCount() );
+				//Also sets the Coordinate that generates this utility
+				vn.setCord(state.field[r][c].getCord());
+				return vn;
+			}
+			nodeCounter++;
+			ArrayList<String> moves = ableMoves(state);
+			//loops through all able moves
+			for(int q = 0; q < moves.size(); q++)
+			{
+				// if the time limit have passed then return the current best choice found
+				long time_Check = System.currentTimeMillis();
+				if((time_Check - current_Time) > MAX_TIME)
+					return vn;
+				
+				// Convert the text coordinate to row and column coordinates 
+				c = state.cordToColumn( moves.get(q) ); r = state.cordToRow( moves.get(q));
+				System.out.println("Max: " + depth + " Place piece at: " + state.field[r][c].getCord()+" alpha is: " + a);
+				//Placing the piece and checking for flips
+				rules.placePieceBoard(state, black, r, c);
+				rules.flipRule(state, black, white, r, c);
+				
+				UtilityNode min = Min(white, black, state, a, b, r, c, depth);
+				vn.setValue( Math.max( vn.getValue(), min.getValue() ) );
+				
+				//Prune if a higher value then the current b is
+				if (vn.getValue() >= b )
+					return vn;
+				
+				//Sets alpha to the current best choice
+				a = Math.max(a, vn.getValue());
+				
+				//If it's the top node, the combare al the tops nodes value and store the highest one
+				if(depth == 1)
+				{
+					if(vn.getValue() > botnode.getValue())
+					{
+						botnode.setCord(state.field[r][c].getCord());
+						botnode.setValue(vn.getValue());
+					}
+				}
+				//Resets the state in order to make the next able choice
+				white = resetPlayer(old_White);
+				black = resetPlayer(old_Black);
+				state = resetBoard(white, black);
+			}
+			System.out.println("Max Depth " + depth + " a:  " +a + " b: " + b + " Cord: " + vn.getCord()+ " Utility: " + vn.getValue() +" Ended!!!!!!!!!!!!!!!!!!!!" );
+			return vn;
+		}
+		/**
+		 * The Min algorithm that decides the best choice for the white player, by picking the lowest utility for the black player
+		 * @param white: The current state of the white player
+		 * @param black: The current state of the black player
+		 * @param state: The current state of the board
+		 * @param a: Alpha
+		 * @param b: Beta
+		 * @param b: Beta
+		 * @param c: the current column
+		 * @param depth: Describes how many levels down in the tree the search has gone
+		 * @return: Return the best choice for the white player
+		 */
+		public UtilityNode Min(Player white, Player black, GameBoard state, int a, int b, int r, int c, int depth)
+		{
+			rules.getGame().consolePrint(state);
+			UtilityNode vn = new UtilityNode(0,"");
+			vn.setValue(MAX_U);
+			Player old_White = resetPlayer(white);
+			Player old_Black = resetPlayer(black);
+			GameBoard old_State = resetBoard(old_White, old_Black);
+
+			depth++;
+			if (black.getPieceCount() + white.getPieceCount() == 16 || depth > MAX_DEPTH)
+			{
+				vn.setValue( black.getPieceCount() - white.getPieceCount() );
+				vn.setCord(state.field[r][c].getCord());
+				return vn;
+			}
+			nodeCounter++;
+			ArrayList<String> moves = ableMoves(state);
+			for(int q = 0; q < moves.size(); q++)
+			{
+				long time_Check = System.currentTimeMillis();
+				if((time_Check - current_Time) > MAX_TIME)
+					return vn;
+				
+				c = state.cordToColumn( moves.get(q) ); r = state.cordToRow( moves.get(q));
+				System.out.println("Min: " + depth + " Place piece at: " + state.field[r][c].getCord() +" beta is: " + a );
+				
+				//Placing the piece and checking for flips
+				rules.placePieceBoard(state, white, r, c);
+				rules.flipRule(state, white, black, r, c);
+				
+				UtilityNode max = Max(white, black, state, a, b, r, c, depth);
+				vn.setValue( Math.min( vn.getValue(), max.getValue() ) );
+		
+				if (vn.getValue() <= a )
+					return vn;
+
+				b = Math.min(b, vn.getValue());
+				white = resetPlayer(old_White);
+				black = resetPlayer(old_Black);
+				state = resetBoard(white, black);
+			}
+			System.out.println("Min Dephh " + depth  + " a:  " +a + " b: " + b + " Cord: " + vn.getCord()+ " Utility: " + vn.getValue() +  " Ended!!!!!!!!!!!!!!" );
+			return vn;
+		}
+
+}

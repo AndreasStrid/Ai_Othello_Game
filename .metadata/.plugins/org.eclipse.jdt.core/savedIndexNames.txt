@@ -1,0 +1,20 @@
+INDEX VERSION 1.127+C:\Users\Stridde\Desktop\AI\.metadata\.plugins\org.eclipse.jdt.core
+2872235285.index
+1581313852.index
+1362500326.index
+2372200007.index
+3350768486.index
+3685482795.index
+2211964258.index
+2828566317.index
+2089126326.index
+1959043948.index
+413933899.index
+585511916.index
+3543908551.index
+3507793755.index
+1375094072.index
+1837364054.index
+1923397036.index
+1672978738.index
+3331780299.index
